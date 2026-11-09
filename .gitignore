@@ -6,3 +6,5 @@ output/*.csv
 .Rhistory
 .RData
 *.RData
+
+*.csv
