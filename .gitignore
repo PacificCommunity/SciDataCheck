@@ -1,0 +1,8 @@
+*_files/*
+*.html
+output/*.csv
+.Rproj.user
+.html
+.Rhistory
+.RData
+*.RData
