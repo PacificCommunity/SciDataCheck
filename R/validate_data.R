@@ -4,5 +4,9 @@ validate_data <- function(year = NULL) {
     year <- as.numeric(Sys.Date() |> format("%Y")) - 1
   }
 
-  create_folder_structure(year_dirs = year, country_codes = "CN")
+  if (.check_dirs_exist()) {
+    print("folder structure exists")
+  } else {
+    create_folder_structure(year_dirs = year, country_codes = "CN")
+  }
 }

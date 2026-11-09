@@ -41,7 +41,7 @@ create_folder_structure <- function(
     for (year_dir in year_dirs) {
       for (country_code in country_codes) {
         mapping_pattern <-
-          read_csv(mapping_filename, show_col_types = FALSE) |>
+          readr::read_csv(mapping_filename, show_col_types = FALSE) |>
           mutate(template_name = na_if(template_name, "")) |>
           filter(!is.na(template_name)) |>
           mutate(
