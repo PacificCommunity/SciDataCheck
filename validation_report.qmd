@@ -1,0 +1,392 @@
+---
+title: "SciData Validation Report"
+subtitle: "Pre-submission quality checks for the SciData Portal"
+format:
+  html:
+    page-layout: full
+    theme: flatly
+    title-block-banner: "#1F2D3D"
+    toc: true
+    toc-depth: 2
+    toc-location: left
+    toc-title: "Contents"
+    embed-resources: true
+    fig-dpi: 150
+execute:
+  echo: false
+  warning: false
+  message: false
+params:
+  last_run: "2024-04-04"
+  full_report: FALSE
+  second_validation_all: FALSE # remove second level validation for now?
+---
+
+```{=html}
+<style>
+  :root { --ok:#2E9E6B; --warn:#E8A33D; --bad:#D64545; --ink:#1F2D3D; --muted:#6B7785; --line:#E5E9EE; }
+  .lead-text { color: var(--muted); font-size: 1.05rem; margin-bottom: 1.25rem; }
+  .kpi-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:14px; margin:1rem 0 1.5rem; }
+  .kpi { background:#fff; border:1px solid var(--line); border-left:5px solid var(--ink);
+         border-radius:10px; padding:14px 16px; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+  .kpi-ok   { border-left-color: var(--ok); }
+  .kpi-warn { border-left-color: var(--warn); }
+  .kpi-bad  { border-left-color: var(--bad); }
+  .kpi-value { font-size:2rem; font-weight:700; line-height:1.1; color:var(--ink); }
+  .kpi-label { font-size:.78rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin-top:4px; }
+  .kpi-sub   { font-size:.85rem; color:var(--muted); margin-top:2px; }
+  .pill { display:inline-block; padding:2px 10px; border-radius:999px; font-size:.8rem; font-weight:600; white-space:nowrap; }
+  h1 { margin-top: 2.25rem; padding-bottom: .3rem; border-bottom: 2px solid var(--line); }
+</style>
+```
+
+```{r setup}
+library(tidyverse)
+library(gt)
+
+# ---- Palette & helpers -------------------------------------------------------
+pal <- c(ok = "#2E9E6B", warn = "#E8A33D", bad = "#D64545", ink = "#1F2D3D", muted = "#6B7785")
+status_cols <- c(passed = pal[["ok"]], warning = pal[["warn"]], failed = pal[["bad"]])
+
+plural <- function(n, word) paste0(n, " ", word, if_else(n == 1, "", "s"))
+
+status_pill <- function(x) {
+  col <- unname(status_cols[tolower(x)])
+  col[is.na(col)] <- pal[["muted"]]
+  sprintf('<span class="pill" style="background:%s1F;color:%s;border:1px solid %s55;">%s</span>',
+          col, col, col, str_to_sentence(x))
+}
+
+kpi <- function(value, label, tone = "ink", sub = NULL) {
+  sprintf('<div class="kpi kpi-%s"><div class="kpi-value">%s</div><div class="kpi-label">%s</div>%s</div>',
+          tone, value, label, if (is.null(sub)) "" else sprintf('<div class="kpi-sub">%s</div>', sub))
+}
+
+# Show the first rows to review, then "+N more" so long lists stay readable
+fmt_rows <- function(x, max_show = 12) {
+  x <- unique(x[!is.na(x) & x != ""])
+  x <- x[order(suppressWarnings(as.numeric(x)))]
+  if (length(x) == 0) return("—")
+  if (length(x) <= max_show) return(paste(x, collapse = ", "))
+  paste0(paste(x[seq_len(max_show)], collapse = ", "), " … *+", length(x) - max_show, " more*")
+}
+
+style_gt <- function(x) {
+  x |>
+    tab_options(
+      table.width = pct(100), table.font.size = px(13),
+      table.border.top.style = "hidden", table.border.bottom.color = "#E5E9EE",
+      column_labels.font.weight = "bold", column_labels.background.color = "#F4F6F8",
+      column_labels.border.bottom.color = "#D5DBE1",
+      row_group.background.color = "#EEF3F8", row_group.font.weight = "bold",
+      row_group.border.top.color = "#D5DBE1",
+      data_row.padding = px(7),
+      row.striping.background_color = "#FAFBFC"
+    ) |>
+    opt_row_striping()
+}
+
+theme_report <- function() {
+  theme_minimal(base_size = 12) +
+    theme(
+      plot.title.position = "plot",
+      plot.title    = element_text(face = "bold", colour = pal[["ink"]]),
+      plot.subtitle = element_text(colour = pal[["muted"]], margin = margin(b = 10)),
+      axis.title    = element_blank(),
+      axis.text.y   = element_text(colour = pal[["ink"]]),
+      axis.text.x   = element_blank(),
+      panel.grid    = element_blank(),
+      legend.position = "top", legend.justification = "left", legend.title = element_blank()
+    )
+}
+
+# ---- First-level data --------------------------------------------------------
+data <- read.csv("output/log_validation.csv", na.strings = c("", "NA")) |>
+  mutate(across(everything(), as.character)) |>
+  mutate(
+    status = if_else(status == "Submission year validation failed", "Validation failed", status),
+    errors.check  = if_else(errors.check == "column_in_dataframe", "missing_column_in_dataframe", errors.check),
+    errors.column = coalesce(errors.column, errors.failure_case)
+  )
+
+df_files           <- readRDS("output/df_files.rds")
+check_descriptions <- readRDS("output/check_descriptions.rds")
+
+multi_country <- n_distinct(data$country_code) > 1
+n_countries   <- n_distinct(data$country_code)
+
+file_status <- data |>
+  group_by(country_code, filename) |>
+  summarise(failed = any(status == "Validation failed"), .groups = "drop")
+
+n_total  <- nrow(file_status)
+n_failed <- sum(file_status$failed)
+n_passed <- n_total - n_failed
+has_l1_failures <- n_failed > 0
+
+# One row per file x column x rule (failure cases merged so the table stays short)
+issues <- data |>
+  filter(status == "Validation failed") |>
+  group_by(country_code, filename, errors.column, errors.check) |>
+  summarise(n_rows = n(), rows = list(errors.row_index), .groups = "drop") |>
+  left_join(df_files |> select(files, title, template_name), join_by(filename == files)) |>
+  left_join(check_descriptions, by = c("template_name", "errors.column", "errors.check")) |>
+  mutate(
+    title       = coalesce(title, basename(dirname(dirname(filename)))),
+    description = coalesce(description, str_to_sentence(str_replace_all(errors.check, "_", " "))),
+    whole_file  = errors.check == "missing_column_in_dataframe",
+    rows_txt    = if_else(whole_file, "*Whole file — column is missing*", map_chr(rows, fmt_rows)),
+    n_rows      = if_else(whole_file, NA_integer_, n_rows)
+  )
+
+top_issues <- issues |>
+  group_by(errors.column, description) |>
+  summarise(n_files = n_distinct(filename), n_rows = sum(n_rows, na.rm = TRUE), .groups = "drop") |>
+  slice_max(n_files, n = 10, with_ties = FALSE) |>
+  mutate(
+    label     = str_wrap(paste0(errors.column, " — ", str_trunc(description, 70)), 55),
+    bar_label = paste0(plural(n_files, "file"), if_else(n_rows > 0, paste0(" · ", scales::comma(n_rows), " rows"), ""))
+  )
+
+# ---- Second-level validation -------------------------------------------------
+sel_second_validation <- data |> distinct(filename, status, data_type_name, country_code)
+if (!params$second_validation_all) {
+  sel_second_validation <- sel_second_validation |> filter(status != "Validation failed")
+}
+run_l2 <- nrow(sel_second_validation) > 0
+
+if (run_l2) {
+  source("second_validation_rules.R")
+  source("second_validation_engine.R")
+  l2 <- run_second_level_validation(sel_second_validation, second_level_rules)
+  readr::write_csv(l2, "output/log_second_validation.csv")
+  l2 <- l2 |> mutate(status = tolower(status))
+} else {
+  l2 <- tibble(country_code = character(), status = character())
+}
+
+n_l2_failed  <- sum(l2$status == "failed")
+n_l2_warning <- sum(l2$status == "warning")
+n_l2_passed  <- sum(l2$status == "passed")
+l2_review    <- l2 |> filter(status %in% c("failed", "warning"))
+```
+
+::: {.lead-text}
+Generated on **`r params$last_run`** · `r plural(n_total, "CSV file")` checked`r if (multi_country) paste0(" across ", n_countries, " members") else ""`.
+:::
+
+# Summary at a glance
+
+```{r kpis}
+#| output: asis
+l2_tone <- if (!run_l2) "ink" else if (n_l2_failed > 0) "bad" else if (n_l2_warning > 0) "warn" else "ok"
+
+cat('<div class="kpi-row">',
+    kpi(n_total, "Files checked"),
+    kpi(n_passed, "Ready for the Portal", "ok", scales::percent(n_passed / n_total, accuracy = 1)),
+    kpi(n_failed, "Need fixing", if (n_failed > 0) "bad" else "ok",
+        if (n_failed > 0) plural(nrow(issues), "issue") else "Nothing to fix"),
+    kpi(if (run_l2) n_l2_failed + n_l2_warning else "—", "Cross-file issues", l2_tone,
+        if (run_l2) paste0(n_l2_failed, " failed · ", n_l2_warning, " warnings") else "Not run"),
+    '</div>', sep = "\n")
+```
+
+```{r key-messages}
+#| output: asis
+msgs <- character()
+
+if (!has_l1_failures) {
+  msgs <- c(msgs, sprintf("**All %d files passed** the SciData Portal checks and can be uploaded.", n_total))
+} else {
+  msgs <- c(msgs, sprintf("**%d of %d files (%s) need fixing** before the SciData Portal will accept them — see [Files that need review](#sec-files).",
+                          n_failed, n_total, scales::percent(n_failed / n_total, accuracy = 1)))
+  top <- top_issues |> slice(1)
+  msgs <- c(msgs, sprintf("The most common issue is in column `%s`: %s (%s).",
+                          top$errors.column, str_to_lower(str_trunc(top$description, 90)), plural(top$n_files, "file")))
+  if (multi_country) {
+    worst <- file_status |> filter(failed) |> count(country_code, sort = TRUE)
+    msgs <- c(msgs, sprintf("Members with files to fix: %s.",
+                            paste0(worst$country_code, " (", worst$n, ")", collapse = ", ")))
+  }
+}
+
+if (!run_l2) {
+  msgs <- c(msgs, "Cross-file (second-level) checks were not run because no files passed first-level validation yet.")
+} else if (n_l2_failed + n_l2_warning == 0) {
+  msgs <- c(msgs, "All cross-file (second-level) checks passed.")
+} else {
+  msgs <- c(msgs, sprintf("**%s failed and %s** in the cross-file checks — these would otherwise come back as Portal comments after upload. See [Second-level validation](#sec-l2).",
+                          plural(n_l2_failed, "check"), plural(n_l2_warning, "warning")))
+}
+
+callout <- if (has_l1_failures || n_l2_failed > 0) "warning" else "tip"
+cat(sprintf('\n::: {.callout-%s title="Key messages"}\n', callout),
+    paste0("- ", msgs, collapse = "\n"),
+    "\n:::\n", sep = "")
+```
+
+# First-level validation
+
+These are the same rules the SciData Portal applies on upload. Anything identified here as an issue or as requiring review will be rejected by the Portal, so fixing it now saves a round-trip.
+
+```{r l1-all-ok}
+#| output: asis
+if (!has_l1_failures) {
+  cat('\n::: {.callout-tip title="No first-level issues"}\nEvery file matches its template and passes all Portal validation rules.\n:::\n')
+}
+```
+
+```{r l1-country-chart, include = FALSE}
+#| eval: !expr multi_country && has_l1_failures
+#| fig-height: !expr max(2.2, 0.4 * n_countries + 1.3)
+#| fig-width: 9
+file_status |>
+  mutate(result = factor(if_else(failed, "Needs fixing", "Ready"), levels = c("Needs fixing", "Ready"))) |>
+  count(country_code, result) |>
+  ggplot(aes(n, fct_rev(country_code), fill = result)) +
+  geom_col(width = 0.65) +
+  geom_text(aes(label = n), position = position_stack(vjust = 0.5), colour = "white", size = 3.4, fontface = "bold") +
+  scale_fill_manual(values = c("Needs fixing" = pal[["bad"]], "Ready" = pal[["ok"]])) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.02)))  +
+  theme_report()
+
+```
+
+```{r l1-issue-chart, include=FALSE}
+#| eval: !expr has_l1_failures
+#| fig-height: !expr max(2.2, 0.55 * nrow(top_issues) + 1.2)
+#| fig-width: 9
+ggplot(top_issues, aes(n_files, fct_reorder(label, n_files))) +
+  geom_col(fill = pal[["bad"]], width = 0.6, alpha = 0.9) +
+  geom_text(aes(label = bar_label), hjust = -0.08, size = 3.4, colour = pal[["ink"]]) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.35))) +
+  labs(title = "Most common issues",
+       subtitle = "Validation rules ranked by number of files affected") +
+  theme_report()
+```
+
+## Files that need review {#sec-files}
+
+This is a summary per file of the number of issues encountered, associated rows (flagged rows) and
+columns (columns affected).
+
+```{r l1-files-table}
+#| eval: !expr has_l1_failures
+files_tbl <- issues |>
+  group_by(country_code, title) |>
+  summarise(
+    n_checks = n(),
+    n_rows   = sum(n_rows, na.rm = TRUE),
+    columns  = paste(sort(unique(errors.column)), collapse = ", "),
+    .groups  = "drop"
+  ) |>
+  arrange(country_code, desc(n_checks))
+
+if (!multi_country) files_tbl <- select(files_tbl, -country_code)
+
+files_tbl |>
+  gt(groupname_col = if (multi_country) "country_code" else NULL) |>
+  cols_label(title = "File", n_checks = "Issues", n_rows = "Flagged rows", columns = "Columns affected") |>
+  fmt_integer(c(n_checks, n_rows)) |>
+  data_color(columns = n_checks, palette = c("#FBE3E3", pal[["bad"]])) |>
+  cols_align("center", c(n_checks, n_rows)) |>
+  cols_width(title ~ pct(38), n_checks ~ pct(10), n_rows ~ pct(12), columns ~ pct(40)) |>
+  style_gt()
+```
+
+## What to fix in each file
+
+Each block below is one file. **Rows to review** lists the row numbers flagged for that rule; long lists are shortened.
+
+```{r l1-detail-table}
+#| eval: !expr has_l1_failures
+issues |>
+  mutate(group = if (multi_country) paste0(country_code, " · ", title) else title) |>
+  arrange(group, whole_file == FALSE, desc(n_rows)) |>
+  select(group, errors.column, description, n_rows, rows_txt) |>
+  gt(groupname_col = "group") |>
+  cols_label(errors.column = "Column", description = "What to fix",
+             n_rows = "Flagged", rows_txt = "Rows to review") |>
+  fmt_integer(n_rows) |>
+  sub_missing(n_rows, missing_text = "—") |>
+  fmt_markdown(rows_txt) |>
+  cols_align("center", n_rows) |>
+  cols_width(errors.column ~ pct(16), description ~ pct(40), n_rows ~ pct(8), rows_txt ~ pct(36)) |>
+  tab_style(cell_text(font = c("SFMono-Regular", "Consolas", "monospace"), size = px(12), color = pal[["ink"]]),
+            cells_body(columns = errors.column)) |>
+  style_gt()
+```
+
+# Second-level validation {#sec-l2}
+
+After a successful upload, SPC runs cross-file checks the Portal can't do on its own (for example, every `effort_id` in catch data must exist in the effort data). Issues found here would normally come back to you as Portal comments — fixing them now means fewer revision cycles.
+
+```{r l2-scope-note}
+#| output: asis
+if (!run_l2) {
+  cat('\n::: {.callout-note title="Not run yet"}\nNone of the files passed first-level validation, so cross-file checks were skipped. Fix the issues above and re-run the report.\n:::\n')
+} else if (params$second_validation_all && has_l1_failures) {
+  cat('\n::: {.callout-note appearance="simple"}\nThese checks include files that **failed** first-level validation, so some results may change once those files are fixed.\n:::\n')
+}
+```
+
+```{r l2-kpis}
+#| eval: !expr run_l2
+#| output: asis
+cat('<div class="kpi-row">',
+    kpi(n_l2_failed,  "Checks failed", if (n_l2_failed > 0) "bad" else "ok"),
+    kpi(n_l2_warning, "Warnings",      if (n_l2_warning > 0) "warn" else "ok"),
+    kpi(n_l2_passed,  "Checks passed", "ok"),
+    '</div>', sep = "\n")
+```
+
+```{r l2-table-fn}
+l2_table <- function(df) {
+  df <- df |> arrange(factor(status, levels = c("failed", "warning", "passed")))
+  if (multi_country) df <- group_by(df, country_code) else df <- select(df, -any_of(c("country_code", "validation_rule")))
+  df |>
+    gt() |>
+    cols_move_to_start(status) |>
+    text_transform(cells_body(columns = status), fn = status_pill) |>
+    cols_label_with(fn = \(x) str_to_sentence(str_replace_all(x, "[._]", " "))) |>
+    style_gt()
+}
+```
+
+```{r l2-review}
+#| eval: !expr run_l2
+#| output: asis
+if (nrow(l2_review) == 0) {
+  cat('\n::: {.callout-tip title="All cross-file checks passed"}\nNo issues found — these submissions should not need further revision for cross-file consistency.\n:::\n')
+}
+```
+
+```{r l2-review-table}
+#| eval: !expr run_l2 && nrow(l2_review) > 0
+l2_table(l2_review)
+```
+
+```{r l2-passed}
+#| eval: !expr run_l2 && n_l2_passed > 0
+#| output: asis
+cat(sprintf('\n::: {.callout-note collapse="true" title="Show the %s"}\n', plural(n_l2_passed, "check that passed")))
+```
+
+```{r l2-passed-table}
+#| eval: !expr run_l2 && n_l2_passed > 0
+l2_table(filter(l2, status == "passed"))
+```
+
+```{r l2-passed-close}
+#| eval: !expr run_l2 && n_l2_passed > 0
+#| output: asis
+cat("\n:::\n")
+```
+
+# About this report
+
+::: {.callout-note collapse="true" title="How the checks work"}
+**First-level validation** checks every CSV file against the rules used by the SciData Portal. Any error the Portal would flag on upload is caught here, so your team can validate all files at once and confirm they match the template before submitting.
+
+**Second-level validation** reproduces the additional checks SPC runs after a successful upload — mostly cross-file consistency (e.g. catch records referencing effort records). When SPC finds these issues we leave a comment in the Portal; this section gives you advance notice so you can resolve them before submitting.
+:::

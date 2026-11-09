@@ -6,5 +6,8 @@ output/*.csv
 .Rhistory
 .RData
 *.RData
-
+submissions/
+output/
+*.rds
+*.Rds
 *.csv
