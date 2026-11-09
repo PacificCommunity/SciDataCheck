@@ -28,14 +28,20 @@ endpoint_validation_rules <- "api/v1/templates/validation_rules"
 #' @noRd
 create_folder_structure <- function(
   year_dirs,
-  country_codes,
-  mapping_path = "input/mapping_template.csv"
+  country_codes #,
+  # mapping_path = "input/mapping_template.csv"
 ) {
   # submissions/{year}/{data_type_name}/{country_code}/{filename}.{csv|parquet}
-  if (file.exists(mapping_path)) {
+
+  mapping_filename <- system.file(
+    "mapping_template.csv",
+    package = "SciDataCheck"
+  )
+  if (file.exists(mapping_filename)) {
     for (year_dir in year_dirs) {
       for (country_code in country_codes) {
-        mapping_pattern <- read.csv(mapping_path) |>
+        mapping_pattern <-
+          read_csv(mapping_filename, show_col_types = FALSE) |>
           mutate(template_name = na_if(template_name, "")) |>
           filter(!is.na(template_name)) |>
           mutate(
@@ -58,6 +64,8 @@ create_folder_structure <- function(
         }
       }
     }
+  } else {
+    print("object mapping_template not found")
   }
 }
 # ── Template discovery / inspection ──────────────────────────────
