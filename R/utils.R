@@ -170,26 +170,6 @@ get_template_details <- function(base_url, endpoint, template_name = NULL) {
   return(final_df)
 }
 
-# Function to fetch an example data template
-example_data_template <- function(base_url, endpoint, template_name) {
-  url <- paste0(base_url, endpoint, "/", template_name)
-
-  response <- GET(url)
-
-  if (status_code(response) != 200) {
-    stop("Failed to fetch templates: ", status_code(response))
-  }
-
-  content <- content(response, as = "text", encoding = "UTF-8")
-  result <- fromJSON(content, flatten = TRUE)
-
-  df <- result$data |>
-    data.frame()
-
-  # df$version <- result$template_version
-  # df$name <- result$template_name
-  return(df)
-}
 
 # ── File validation ───────────────────────────────────────────
 
@@ -432,7 +412,7 @@ validate_files <- function(
       base_url = base_url,
       endpoint = endpoint,
       template_name = df_files$template_name[i],
-      file_path = df_files$files[i],
+      file_path = df_files$full_path[i],
       submission_year = df_files$submission_year[i]
     )
 
@@ -442,10 +422,9 @@ validate_files <- function(
       r_df <- data.frame(status = r$message)
     }
 
-    r_df$filename <- df_files$files[i]
+    r_df$filename <- df_files$file_name[i]
     r_df$data_type_name <- df_files$data_type_name[i]
     r_df$template_name <- df_files$template_name[i]
-    r_df$country_code <- df_files$country_code[i]
     results[[i]] <- r_df
   }
 
