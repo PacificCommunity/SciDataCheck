@@ -43,7 +43,7 @@
       ))
     }
   } else {
-    stop("Mapping file missing from inst/ ")
+    stop("Mapping file missing from folder inst/ ")
   }
 
   sel_files <- sel_files |>
