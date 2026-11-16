@@ -1,5 +1,6 @@
 #' @noRd
 .build_file_inventory <- function(submission_year, all_files) {
+  dir_submission <- paste0(submission_year, "/submissions")
   if (length(all_files) == 0) {
     message(paste0(
       "No csv files were found under the following directory: `",
