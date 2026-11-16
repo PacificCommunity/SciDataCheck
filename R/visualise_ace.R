@@ -1,37 +1,3 @@
-# test_flag <- NULL
-
-# is there only ever going to be one ace file?
-
-ace_byocean <- function(year) {
-  gears <-
-    read_dataset(year, "ace") |>
-    dplyr::pull(gear_code) |>
-    unique()
-
-  ace_byocean_single <- function(year = year, gear = gear) {
-    read_dataset(year, "ace") |>
-      dplyr::filter(gear_code == gear) |>
-      dplyr::arrange(retain_mt) |>
-      dplyr::mutate(sp_code = forcats::fct_inorder(sp_code)) |>
-      tidyr::pivot_longer(cols = c(retain_mt, discard_mt)) |>
-      ggplot2::ggplot() +
-      ggplot2::aes(y = sp_code, x = value, fill = name) +
-      ggplot2::geom_col() +
-      ggplot2::facet_wrap(~ocean_code) +
-      ggplot2::labs(x = "Catch (mt)", y = NULL, title = gear) +
-      ggplot2::scale_x_continuous(
-        labels = scales::label_number(scale_cut = scales::cut_short_scale())
-      ) +
-      ggplot2::theme_bw(20)
-  }
-
-  plots <- purrr::map2(year, gears, ace_byspp_single) |>
-    rlang::set_names(paste(year, gears, sep = "_"))
-
-  return(plots)
-}
-
-
 ace_byspp <- function(year) {
   gears <-
     read_dataset(year, "ace") |>
@@ -90,7 +56,8 @@ ace_byspp <- function(year) {
       ggplot2::theme(legend.position = "bottom")
   }
 
-  plots <- purrr::map2(year, gears, ace_byspp_single) |>
+  plots <-
+    purrr::map2(year, gears, ace_byspp_single) |>
     rlang::set_names(gears)
 
   return(plots)
