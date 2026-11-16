@@ -1,10 +1,12 @@
 #' @noRd
 .build_file_inventory <- function(submission_year, all_files) {
-
-  if (length(all_files) == 0){
-    message(paste0("No csvs were found under the following directory: `",
-                   dir_submission,"`. Please make sure you add the files",
-                   " you would like to validate in the appropriate data type folders."))
+  if (length(all_files) == 0) {
+    message(paste0(
+      "No csv files were found under the following directory: `",
+      dir_submission,
+      "`. Please make sure you add the files",
+      " you would like to validate in the appropriate data type folders."
+    ))
     return(invisible())
   }
 
@@ -14,7 +16,6 @@
       file_name = basename(full_path),
       modified_at = file.info(full_path)$mtime,
       created_at = file.info(full_path)$ctime,
-
     )
 
   mapping_filename <- system.file(
@@ -33,37 +34,39 @@
     data_type_folders <- sel_files |>
       group_by(template_name) |>
       summarise(n = n_distinct(file_name)) |>
-      filter(n>1) |>
+      filter(n > 1) |>
       pull(data_type_name)
 
-    if(length(multiple_files) > 0){
-      message(glue::glue("You need to have a single file inside these data type folders: {data_type_folders}" ))
+    if (length(multiple_files) > 0) {
+      message(glue::glue(
+        "You need to have a single file inside these data type folders: {data_type_folders}"
+      ))
     }
-
-  }else{
+  } else {
     stop("Mapping file missing from inst/ ")
   }
 
   sel_files <- sel_files |>
-    dplyr::select(submission_year,
-                  full_path,
-                  data_type_name,
-                  file_name,
-                  template_name,
-                  title) |>
+    dplyr::select(
+      submission_year,
+      full_path,
+      data_type_name,
+      file_name,
+      template_name,
+      title
+    ) |>
     mutate_all(as.character)
 
   return(sel_files)
-
 }
 
 # Function to validate a data file (CSV)
 validate_file <- function(
-    base_url,
-    endpoint,
-    template_name,
-    file_path,
-    submission_year = NA
+  base_url,
+  endpoint,
+  template_name,
+  file_path,
+  submission_year = NA
 ) {
   # Check if file exists
   if (!file.exists(file_path)) {
@@ -149,9 +152,9 @@ validate_file <- function(
 # Validate a data file ####
 
 validate_files <- function(
-    df_files,
-    base_url = .api_base_url,
-    endpoint = .endpoint_validate
+  df_files,
+  base_url = .api_base_url,
+  endpoint = .endpoint_validate
 ) {
   results <- list()
 
