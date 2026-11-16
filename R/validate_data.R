@@ -5,8 +5,7 @@ validate_data <- function(year = NULL) {
   }
 
   # TODO: folder structure should be {year}/submissions/{data_types} and {year}/reports/
-  dir_submission <- paste0("submissions/", year)
-  dir_reports <- paste0(dir_submission, "/reports")
+  dir_submission <- paste0(year, "/submissions")
 
   if (dir.exists(dir_submission)) {
     print("folder structure exists")
@@ -14,26 +13,27 @@ validate_data <- function(year = NULL) {
     # check number of csv files available for validation if any
     all_files <- list.files(dir_submission, pattern = ".csv$", recursive = T, full.names = T)
 
-    if (length(all_files) == 0){
-      message(paste0("No csvs were found under the following directory: `",
-                     dir_submission,"`. Please make sure you add the files",
-                     " you would like to validate in the appropriate data type folders."))
+    # NOTE: If more than one csv in the data type folder only the most recently created will be validated
+    file_inventory <- .build_file_inventory(submission_year = year,
+                                            all_files = all_files)
+
+    if(is.null(file_inventory)){
       return(invisible())
     }
 
-    # NOTE: If more than one csv in the data type folder only the most recently created will be validated
-    file_inventory <- .build_file_inventory(submission_year = year,
-                                                all_files = all_files,
-                                                latest_files = TRUE)
-
     # Validate files - save output into a temp file
     res <- validate_files(file_inventory)
+
+
+    if (nrow(res |> filter(!(status == "Validation failed"))) > 1){
+     # second level validation in files that passed the first level
+    }
 
     # Build report
     report <- render_validation_report(res,
                                        file_inventory,
                                        year = year,
-                                       output_dir = dir_reports
+                                       output_dir = dir_submission
     )
 
     invisible(list(results = res, report = report))

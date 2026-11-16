@@ -1,5 +1,12 @@
 #' @noRd
-.build_file_inventory <- function(submission_year, all_files, latest_files = TRUE) {
+.build_file_inventory <- function(submission_year, all_files) {
+
+  if (length(all_files) == 0){
+    message(paste0("No csvs were found under the following directory: `",
+                   dir_submission,"`. Please make sure you add the files",
+                   " you would like to validate in the appropriate data type folders."))
+    return(invisible())
+  }
 
   map_df <- data.frame(full_path = all_files) |>
     mutate(
@@ -23,15 +30,16 @@
     # here we are maintaining only the csv files inside the data_type folders
     sel_files <- inner_join(map_df, mapping_pattern, by = "data_type_name")
 
-    if (latest_files){
-      message("Note that if multiple files are found in the data type folder, only the most recently created will be selected for validation.")
-      sel_files <- sel_files |>
-        group_by(template_name) |>
-        slice_max(n = 1, order_by = created_at) |>
-        slice_head(n = 1) |> # maybe a bit repetitive but to make sure we end up with a single file
-        mutate(submission_year = submission_year) |>
-        ungroup()
+    data_type_folders <- sel_files |>
+      group_by(template_name) |>
+      summarise(n = n_distinct(file_name)) |>
+      filter(n>1) |>
+      pull(data_type_name)
+
+    if(length(multiple_files) > 0){
+      message(glue::glue("You need to have a single file inside these data type folders: {data_type_folders}" ))
     }
+
   }else{
     stop("Mapping file missing from inst/ ")
   }

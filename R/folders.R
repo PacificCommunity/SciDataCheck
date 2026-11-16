@@ -13,9 +13,9 @@
       filter(!is.na(template_name)) |>
       mutate(
         template_path = paste0(
-          "submissions/",
           submission_year,
           "/",
+          "submissions/",
           data_type_name
         )
       )
