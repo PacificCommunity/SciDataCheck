@@ -4,12 +4,12 @@
 
 ace_byocean <- function(year) {
   gears <-
-    read_ace(year) |>
+    read_dataset(year, "ace") |>
     dplyr::pull(gear_code) |>
     unique()
 
   ace_byocean_single <- function(year = year, gear = gear) {
-    read_ace(year) |>
+    read_dataset(year, "ace") |>
       dplyr::filter(gear_code == gear) |>
       dplyr::arrange(retain_mt) |>
       dplyr::mutate(sp_code = forcats::fct_inorder(sp_code)) |>
@@ -34,7 +34,7 @@ ace_byocean <- function(year) {
 
 ace_byspp <- function(year) {
   gears <-
-    read_ace(year) |>
+    read_dataset(year, "ace") |>
     dplyr::pull(gear_code) |>
     unique()
 

@@ -11,4 +11,5 @@ output/
 *.rds
 *.Rds
 *.csv
+figs/
 !inst/mapping_template.csv
