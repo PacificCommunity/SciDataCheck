@@ -1,0 +1,280 @@
+---
+title: "SciData Validation Report"
+format:
+  html:
+    page-layout: full
+    theme: flatly
+    title-block-banner: "#1F2D3D"
+    toc: true
+    toc-depth: 2
+    toc-location: left
+    toc-title: "Contents"
+    embed-resources: true
+    fig-dpi: 150
+execute:
+  echo: false
+  warning: false
+  message: false
+params:
+  results_path: ""
+  inventory_path: ""
+  error_desc_path: ""
+  submission_year: ""
+  run_date: "2024-04-04"
+  full_report: FALSE
+  second_validation_all: FALSE
+---
+
+```{r}
+#| include: false
+options(scipen = 999)
+res <- readRDS(params$results_path)
+df_files = readRDS(params$inventory_path)
+check_descriptions = readRDS(params$error_desc_path)
+
+```
+
+```{=html}
+<style>
+  :root { --ok:#2E9E6B; --warn:#E8A33D; --bad:#D64545; --ink:#1F2D3D; --muted:#6B7785; --line:#E5E9EE; }
+  .lead-text { color: var(--muted); font-size: 1.05rem; margin-bottom: 1.25rem; }
+  .kpi-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:14px; margin:1rem 0 1.5rem; }
+  .kpi { background:#fff; border:1px solid var(--line); border-left:5px solid var(--ink);
+         border-radius:10px; padding:14px 16px; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+  .kpi-ok   { border-left-color: var(--ok); }
+  .kpi-warn { border-left-color: var(--warn); }
+  .kpi-bad  { border-left-color: var(--bad); }
+  .kpi-value { font-size:2rem; font-weight:700; line-height:1.1; color:var(--ink); }
+  .kpi-label { font-size:.78rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin-top:4px; }
+  .kpi-sub   { font-size:.85rem; color:var(--muted); margin-top:2px; }
+  .pill { display:inline-block; padding:2px 10px; border-radius:999px; font-size:.8rem; font-weight:600; white-space:nowrap; }
+  h1 { margin-top: 2.25rem; padding-bottom: .3rem; border-bottom: 2px solid var(--line); }
+</style>
+```
+
+```{r setup}
+library(tidyverse)
+library(gt)
+
+# ---- Palette & helpers -------------------------------------------------------
+pal <- c(ok = "#2E9E6B", warn = "#E8A33D", bad = "#D64545", ink = "#1F2D3D", muted = "#6B7785")
+status_cols <- c(passed = pal[["ok"]], warning = pal[["warn"]], failed = pal[["bad"]])
+
+plural <- function(n, word) paste0(n, " ", word, if_else(n == 1, "", "s"))
+
+status_pill <- function(x) {
+  col <- unname(status_cols[tolower(x)])
+  col[is.na(col)] <- pal[["muted"]]
+  sprintf('<span class="pill" style="background:%s1F;color:%s;border:1px solid %s55;">%s</span>',
+          col, col, col, str_to_sentence(x))
+}
+
+kpi <- function(value, label, tone = "ink", sub = NULL) {
+  sprintf('<div class="kpi kpi-%s"><div class="kpi-value">%s</div><div class="kpi-label">%s</div>%s</div>',
+          tone, value, label, if (is.null(sub)) "" else sprintf('<div class="kpi-sub">%s</div>', sub))
+}
+
+# Show the first rows to review, then "+N more" so long lists stay readable
+fmt_rows <- function(x, max_show = 12) {
+  x <- unique(x[!is.na(x) & x != ""])
+  x <- x[order(suppressWarnings(as.numeric(x)))]
+  if (length(x) == 0) return("—")
+  if (length(x) <= max_show) return(paste(x, collapse = ", "))
+  paste0(paste(x[seq_len(max_show)], collapse = ", "), " … *+", length(x) - max_show, " more*")
+}
+
+style_gt <- function(x) {
+  x |>
+    tab_options(
+      table.width = pct(100), table.font.size = px(13),
+      table.border.top.style = "hidden", table.border.bottom.color = "#E5E9EE",
+      column_labels.font.weight = "bold", column_labels.background.color = "#F4F6F8",
+      column_labels.border.bottom.color = "#D5DBE1",
+      row_group.background.color = "#EEF3F8", row_group.font.weight = "bold",
+      row_group.border.top.color = "#D5DBE1",
+      data_row.padding = px(7),
+      row.striping.background_color = "#FAFBFC"
+    ) |>
+    opt_row_striping()
+}
+
+theme_report <- function() {
+  theme_minimal(base_size = 12) +
+    theme(
+      plot.title.position = "plot",
+      plot.title    = element_text(face = "bold", colour = pal[["ink"]]),
+      plot.subtitle = element_text(colour = pal[["muted"]], margin = margin(b = 10)),
+      axis.title    = element_blank(),
+      axis.text.y   = element_text(colour = pal[["ink"]]),
+      axis.text.x   = element_blank(),
+      panel.grid    = element_blank(),
+      legend.position = "top", legend.justification = "left", legend.title = element_blank()
+    )
+}
+
+# ---- First-level data --------------------------------------------------------
+data <- res |>
+  mutate(across(everything(), as.character)) |>
+  mutate(
+    status = if_else(status == "Submission year validation failed", "Validation failed", status),
+    errors.check  = if_else(errors.check == "column_in_dataframe", "missing_column_in_dataframe", errors.check),
+    errors.column = coalesce(errors.column, errors.failure_case)
+  )
+
+file_status <- data |>
+  group_by(filename) |>
+  summarise(failed = any(status == "Validation failed"), .groups = "drop")
+
+n_total  <- nrow(file_status)
+n_failed <- sum(file_status$failed)
+n_passed <- n_total - n_failed
+has_l1_failures <- n_failed > 0
+
+# One row per file x column x rule (failure cases merged so the table stays short)
+issues <- data |>
+  filter(status == "Validation failed") |>
+  group_by(filename, errors.column, errors.check) |>
+  summarise(n_rows = n(), rows = list(errors.row_index), .groups = "drop") |>
+  left_join(df_files |> select(file_name, title, template_name), join_by(filename == file_name)) |> # TODO: standardise column names
+  left_join(check_descriptions, by = c("template_name", "errors.column", "errors.check")) |>
+  mutate(
+    title       = coalesce(title, basename(dirname(dirname(filename)))),
+    description = coalesce(description, str_to_sentence(str_replace_all(errors.check, "_", " "))),
+    whole_file  = errors.check == "missing_column_in_dataframe",
+    rows_txt    = if_else(whole_file, "*Whole file — column is missing*", map_chr(rows, fmt_rows)),
+    n_rows      = if_else(whole_file, NA_integer_, n_rows)
+  )
+
+top_issues <- issues |>
+  group_by(errors.column, description) |>
+  summarise(n_files = n_distinct(filename), n_rows = sum(n_rows, na.rm = TRUE), .groups = "drop") |>
+  slice_max(n_files, n = 10, with_ties = FALSE) |>
+  mutate(
+    label     = str_wrap(paste0(errors.column, " — ", str_trunc(description, 70)), 55),
+    bar_label = paste0(plural(n_files, "file"), if_else(n_rows > 0, paste0(" · ", scales::comma(n_rows), " rows"), ""))
+  )
+
+# ---- Second-level validation -------------------------------------------------
+# TODO
+```
+
+::: {.lead-text}
+Generated on **`r params$run_date`** · `r plural(n_total, "CSV file")` checked.
+:::
+
+# Summary at a glance
+
+```{r kpis}
+#| output: asis
+
+cat('<div class="kpi-row">',
+    kpi(n_total, "Files checked"),
+    kpi(n_passed, "Ready for the Portal", "ok", scales::percent(n_passed / n_total, accuracy = 1)),
+    kpi(n_failed, "Need fixing", if (n_failed > 0) "bad" else "ok"),
+    '</div>', sep = "\n")
+```
+
+```{r key-messages}
+#| output: asis
+msgs <- character()
+
+if (!has_l1_failures) {
+  msgs <- c(msgs, sprintf("**All %d files passed** the SciData Portal checks and can be uploaded.", n_total))
+} else{
+   msgs <- c(msgs, sprintf("**%d of %d files (%s) need fixing** before the SciData Portal will accept them — see [Files that need review](#sec-files).",
+                           n_failed, n_total, scales::percent(n_failed / n_total, accuracy = 1)))
+}
+
+callout <- if (has_l1_failures > 0) "warning" else "tip"
+cat(sprintf('\n::: {.callout-%s title="Key messages"}\n', callout),
+    paste0("- ", msgs, collapse = "\n"),
+    "\n:::\n", sep = "")
+```
+
+# First-level validation
+
+These are the same rules the SciData Portal applies on upload. Anything identified here as an issue or as requiring review will be rejected by the Portal, so fixing it now saves a round-trip.
+
+```{r l1-all-ok}
+#| output: asis
+if (!has_l1_failures) {
+  cat('\n::: {.callout-tip title="No first-level issues"}\nEvery file matches its template and passes all Portal validation rules.\n:::\n')
+}
+```
+
+```{r l1-issue-chart, include=FALSE}
+#| eval: !expr has_l1_failures
+#| fig-height: !expr max(2.2, 0.55 * nrow(top_issues) + 1.2)
+#| fig-width: 9
+ggplot(top_issues, aes(n_files, fct_reorder(label, n_files))) +
+  geom_col(fill = pal[["bad"]], width = 0.6, alpha = 0.9) +
+  geom_text(aes(label = bar_label), hjust = -0.08, size = 3.4, colour = pal[["ink"]]) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.35))) +
+  labs(title = "Most common issues",
+       subtitle = "Validation rules ranked by number of files affected") +
+  theme_report()
+```
+
+## Files that need review {#sec-files}
+
+This is a summary per file of the number of issues encountered, associated rows (flagged rows) and
+columns (columns affected).
+
+```{r l1-files-table}
+#| eval: !expr has_l1_failures
+#| 
+files_tbl <- issues |>
+  group_by(title) |>
+  summarise(
+    n_checks = n(),
+    n_rows   = sum(n_rows, na.rm = TRUE),
+    columns  = paste(sort(unique(errors.column)), collapse = ", "),
+    .groups  = "drop"
+  ) |>
+  arrange(desc(n_checks))
+
+files_tbl |>
+  gt() |>
+  cols_label(title = "File", n_checks = "Issues", n_rows = "Flagged rows", columns = "Columns affected") |>
+  fmt_integer(c(n_checks, n_rows)) |>
+  data_color(columns = n_checks, palette = c("#FBE3E3", pal[["bad"]])) |>
+  cols_align("center", c(n_checks, n_rows)) |>
+  cols_width(title ~ pct(38), n_checks ~ pct(10), n_rows ~ pct(12), columns ~ pct(40)) |>
+  style_gt()
+```
+
+## What to fix in each file
+
+Each section below refers to one file and lists the issues that need to be fixed.
+
+::: {.callout-note}
+## How to read the `Row(s) that need review` column
+
+This column shows the row numbers where an issue was found for a specific rule.
+If a list of row numbers is shortened, not all affected rows are shown. You should check the entire file for the issue, not just the rows listed.
+
+Row numbers start from the first data row (the header is not counted). This means row 1 is the first row of data. Note that Excel counts the header as row 1. **For example, row 1 in the table below corresponds to row 2 in Excel**.
+:::
+
+```{r l1-detail-table}
+#| eval: !expr has_l1_failures
+issues |>
+  mutate(group = title) |>
+  arrange(group, whole_file == FALSE, desc(n_rows)) |>
+  
+  dplyr::mutate(rows_txt = as.character(as.numeric(rows_txt) + 1)) |> # API indexing doesn't take into account 
+                                          # the header line and the counting starts at zero (so line 1 is 0)
+
+  select(group, errors.column, description, n_rows, rows_txt) |>
+  gt(groupname_col = "group") |>
+  cols_label(errors.column = "Column", description = "What to fix",
+             n_rows = "Flagged", rows_txt = "Row(s) that need review") |>
+  fmt_integer(n_rows) |>
+  sub_missing(n_rows, missing_text = "—") |>
+  fmt_markdown(rows_txt) |>
+  cols_align("center", n_rows) |>
+  cols_width(errors.column ~ pct(16), description ~ pct(40), n_rows ~ pct(8), rows_txt ~ pct(36)) |>
+  tab_style(cell_text(font = c("SFMono-Regular", "Consolas", "monospace"), size = px(12), color = pal[["ink"]]),
+            cells_body(columns = errors.column)) |>
+  style_gt()
+```
