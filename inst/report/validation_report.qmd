@@ -16,6 +16,7 @@ execute:
   warning: false
   message: false
 params:
+  work_path: ""
   results_path: ""
   inventory_path: ""
   error_desc_path: ""
@@ -283,8 +284,10 @@ issues |>
 
 # Visualise ACE
 
-
 ```{r}
-# add in ace plot here
-# import saved .png figs here
+#| label: fig-ace
+#| out-width: "100%"
+params$work_path |>
+  list.files(pattern = "^ace_.*\\.png$", full.names = TRUE) |>
+  knitr::include_graphics()
 ```

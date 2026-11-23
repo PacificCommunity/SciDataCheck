@@ -1,6 +1,6 @@
 read_dataset <- function(year, type) {
   filename <- list.files(
-    glue::glue("submissions/{test_flag}{year}/{type}"),
+    glue::glue("{year}/submissions/{type}"),
     full.names = TRUE
   )
 

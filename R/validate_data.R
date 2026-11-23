@@ -35,11 +35,9 @@ validate_data <- function(year = NULL) {
       # second level validation in files that passed the first level
     }
 
-    # add plots here
+    # save plots here,
+    # they should be saved in the temp file
     inc_plots_bool <- TRUE
-    if (inc_plots_bool) {
-      plot_list <- ace_byspp(year = year)
-    }
 
     # Build report
     report <- render_validation_report(

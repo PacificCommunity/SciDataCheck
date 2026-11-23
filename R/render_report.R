@@ -2,7 +2,7 @@ render_validation_report <- function(
   res,
   file_inventory,
   year,
-  include_plots = FALSE,
+  include_plots,
   output_dir = ".",
   run_date = NULL
 ) {
@@ -41,9 +41,14 @@ render_validation_report <- function(
   saveRDS(file_inventory, inventory_path)
   saveRDS(get_check_descriptions(), error_desc_path)
 
+  if (include_plots) {
+    ace_byspp(year = year, primary_path = work_dir)
+  }
+
   quarto::quarto_render(
     input = file.path(work_dir, "validation_report.qmd"),
     execute_params = list(
+      work_path = work_dir,
       results_path = results_path,
       inventory_path = inventory_path,
       error_desc_path = error_desc_path,
