@@ -42,6 +42,7 @@ render_validation_report <- function(
   saveRDS(get_check_descriptions(), error_desc_path)
 
   if (include_plots) {
+    # this saves the ace plots (for all gears) to the temp working dir
     ace_byspp(year = year, primary_path = work_dir)
   }
 

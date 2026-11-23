@@ -35,8 +35,9 @@ validate_data <- function(year = NULL) {
       # second level validation in files that passed the first level
     }
 
-    # save plots here,
-    # they should be saved in the temp file
+    # TODO
+    # this should be changed to if-else statement at some point
+    # if passes all the second-checks then show plots??
     inc_plots_bool <- TRUE
 
     # Build report
