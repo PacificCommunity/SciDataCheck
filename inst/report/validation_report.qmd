@@ -278,3 +278,11 @@ issues |>
             cells_body(columns = errors.column)) |>
   style_gt()
 ```
+
+
+# Visualise ACE
+
+
+```{r}
+# add in ace plot here
+```
