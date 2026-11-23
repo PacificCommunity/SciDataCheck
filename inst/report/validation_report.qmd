@@ -23,6 +23,7 @@ params:
   run_date: "2024-04-04"
   full_report: FALSE
   second_validation_all: FALSE
+  include_plots: FALSE
 ---
 
 ```{r}
@@ -285,4 +286,5 @@ issues |>
 
 ```{r}
 # add in ace plot here
+# import saved .png figs here
 ```
