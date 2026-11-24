@@ -43,7 +43,11 @@ render_validation_report <- function(
 
   if (include_plots) {
     # this saves the ace plots (for all gears) to the temp working dir
+    # runs all ace plots.
     ace_byspp(year = year, primary_path = work_dir)
+    # run all aggregate plots
+
+    # run all logbook plots
   }
 
   quarto::quarto_render(
