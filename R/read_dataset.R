@@ -1,6 +1,6 @@
 read_dataset <- function(year, type) {
   filename <- list.files(
-    glue::glue("submissions/{test_flag}{year}/{type}"),
+    glue::glue("{year}/submissions/{type}"),
     full.names = TRUE
   )
 
@@ -12,6 +12,6 @@ read_dataset <- function(year, type) {
     stop(glue::glue("No file detected in {type} folder for {year}"))
   }
 
-  imported_table <- readr::read_csv(filename)
+  imported_table <- readr::read_csv(filename, show_col_types = FALSE)
   return(imported_table)
 }

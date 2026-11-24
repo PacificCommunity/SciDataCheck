@@ -1,11 +1,15 @@
-ace_byspp <- function(year) {
+ace_byspp <- function(year, primary_path) {
   gears <-
     read_dataset(year, "ace") |>
     dplyr::pull(gear_code) |>
     unique()
 
-  ace_byspp_single <- function(year = year, gear = gear) {
-    read_ace(year) |>
+  ace_byspp_single <- function(
+    gear = gear,
+    save = TRUE
+  ) {
+    p <-
+      read_dataset(year = year, type = "ace") |>
       dplyr::filter(gear_code == gear) |>
       dplyr::mutate(
         grouping = dplyr::case_when(
@@ -54,11 +58,16 @@ ace_byspp <- function(year) {
       ggplot2::theme_bw(11) +
       ggplot2::theme(strip.text = ggplot2::element_text(size = 9)) +
       ggplot2::theme(legend.position = "bottom")
+
+    if (save) {
+      ggplot2::ggsave(
+        filename = file.path(primary_path, glue::glue("ace_{gear}.png")),
+        plot = p,
+        height = 10,
+        width = 12
+      )
+    }
   }
 
-  plots <-
-    purrr::map2(year, gears, ace_byspp_single) |>
-    rlang::set_names(gears)
-
-  return(plots)
+  purrr::walk(gears, \(g) ace_byspp_single(gear = g))
 }

@@ -16,6 +16,7 @@ execute:
   warning: false
   message: false
 params:
+  work_path: ""
   results_path: ""
   inventory_path: ""
   error_desc_path: ""
@@ -23,6 +24,7 @@ params:
   run_date: "2024-04-04"
   full_report: FALSE
   second_validation_all: FALSE
+  include_plots: FALSE
 ---
 
 ```{r}
@@ -277,4 +279,58 @@ issues |>
   tab_style(cell_text(font = c("SFMono-Regular", "Consolas", "monospace"), size = px(12), color = pal[["ink"]]),
             cells_body(columns = errors.column)) |>
   style_gt()
+```
+
+
+# Visualise data
+
+```{r}
+#| label: setup-tabs
+#| include: false
+library(tidyverse)
+
+lookup_gears <- function(x) {
+  case_match(x, 
+  "ll" ~ "Longline", 
+  "L" ~ "Longline", 
+  "pl" ~ "Pole & Line", 
+  "P" ~ "Pole & Line", 
+  "O" ~ "Other", 
+  "ot" ~ "Other", 
+  "S" ~ "Purse seine", 
+  "ps" ~ "Purse seine", 
+    "T" ~ "Troll", 
+  "tr" ~ "Troll", 
+  "G" ~ "Gillnet", 
+  .default = x)
+}
+
+tabset_pngs <- function(pattern, prefix) {
+  files <- list.files(params$work_path, pattern = pattern, full.names = TRUE)
+  titles <- files |>
+    basename() |>
+    str_remove(str_c("^", prefix)) |>
+    str_remove("\\.png$") |>
+    lookup_gears()
+  paths <- files |> fs::path_rel() |> URLencode()
+
+  str_c("### ", titles, "\n\n![](", paths, "){width=100%}\n\n", collapse = "") |>
+    (\(tabs) cat("::: {.panel-tabset}\n\n", tabs, ":::\n", sep = ""))()
+}
+```
+
+## ACE
+
+```{r}
+#| label: tabs-ace
+#| results: asis
+tabset_pngs("^ace_.*\\.png$", "ace_")
+```
+
+## Aggregate data
+
+```{r}
+#| label: tabs-agg
+#| results: asis
+tabset_pngs("^agg_catch_.*\\.png$", "agg_catch_")
 ```
