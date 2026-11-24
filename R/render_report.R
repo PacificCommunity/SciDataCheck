@@ -46,7 +46,7 @@ render_validation_report <- function(
     # runs all ace plots.
     ace_byspp(year = year, primary_path = work_dir)
     # run all aggregate plots
-
+    plot_agg(year = year, primary_path = work_dir)
     # run all logbook plots
   }
 

@@ -282,12 +282,24 @@ issues |>
 ```
 
 
-# Visualise ACE
+# Visualise data
+
+## ACE
 
 ```{r}
 #| label: fig-ace
 #| out-width: "100%"
 params$work_path |>
   list.files(pattern = "^ace_.*\\.png$", full.names = TRUE) |>
+  knitr::include_graphics()
+```
+
+## Aggregate data
+
+```{r}
+#| label: fig-agg
+#| out-width: "100%"
+params$work_path |>
+  list.files(pattern = "^agg_catch_.*\\.png$", full.names = TRUE) |>
   knitr::include_graphics()
 ```
