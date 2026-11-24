@@ -5,7 +5,7 @@ validate_data <- function(year = NULL) {
   }
 
   # TODO: folder structure should be {year}/submissions/{data_types} and {year}/reports/
-  dir_submission <- paste0(year, "/submissions")
+  dir_submission <- paste0(year)
 
   if (dir.exists(dir_submission)) {
     print("folder structure exists")
